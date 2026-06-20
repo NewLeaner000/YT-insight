@@ -2,33 +2,29 @@ import os
 import pickle
 from deep_translator import GoogleTranslator
 
-class StackingSentimentModel:
+class BaselineSentimentModel:
     def __init__(self):
         # Load the production models exported from the Offline Notebook Training
+        # Note: We use the 12MB Baseline model instead of the 917MB Stacking model
+        # because Render Free Tier only provides 512MB RAM total, and GitHub limits files to 100MB.
         service_dir = os.path.dirname(__file__)
-        ngram_path = os.path.join(service_dir, "sentiment_model_ngram.pkl")
-        stacking_path = os.path.join(service_dir, "sentiment_model_stacking.pkl")
+        baseline_path = os.path.join(service_dir, "sentiment_model_baseline.pkl")
         
         self.is_loaded = False
-        self.tfidf = None
-        self.stacking_model = None
+        self.model_pipeline = None
         
-        if os.path.exists(ngram_path) and os.path.exists(stacking_path):
+        if os.path.exists(baseline_path):
             try:
-                print("Loading Stacking ML Pipeline...")
-                with open(ngram_path, 'rb') as f:
-                    ngram_pipeline = pickle.load(f)
-                    self.tfidf = ngram_pipeline.named_steps['tfidf']
-                    
-                with open(stacking_path, 'rb') as f:
-                    self.stacking_model = pickle.load(f)
+                print("Loading Baseline ML Pipeline (12MB) for Free-Tier Deployment...")
+                with open(baseline_path, 'rb') as f:
+                    self.model_pipeline = pickle.load(f)
                     
                 self.is_loaded = True
-                print("Stacking ML Pipeline loaded successfully.")
+                print("Baseline ML Pipeline loaded successfully.")
             except Exception as e:
                 print(f"Error loading models: {e}")
         else:
-            print("WARNING: Required .pkl files not found! Please run the notebook first.")
+            print("WARNING: Required baseline .pkl file not found! Please run the notebook first.")
             
         self.translator = GoogleTranslator(source='auto', target='en')
 
@@ -50,18 +46,16 @@ class StackingSentimentModel:
             # Fallback if model isn't trained yet
             return ["NEUTRAL"] * len(texts) if texts else []
             
-        tfidf_matrix = self.tfidf.transform(texts)
-        return self.stacking_model.predict(tfidf_matrix)
+        return self.model_pipeline.predict(texts)
         
     def predict_proba(self, texts: list[str]) -> list[float]:
         if not texts or not self.is_loaded:
             # Fallback if model isn't trained yet
             return [0.0] * len(texts) if texts else []
             
-        tfidf_matrix = self.tfidf.transform(texts)
-        probs = self.stacking_model.predict_proba(tfidf_matrix)
+        probs = self.model_pipeline.predict_proba(texts)
         # Return the max probability score as confidence
         return [float(max(p)) for p in probs]
 
 # Export singleton instance
-sentiment_model = StackingSentimentModel()
+sentiment_model = BaselineSentimentModel()

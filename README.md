@@ -47,6 +47,7 @@ The following table demonstrates the performance leap when moving from a naive A
 ### Problem 2: Sarcasm Blindness
 * **The Failure:** The Base Gemini model (Zero-shot) often fails at nuance. Given a comment like *"Tuyệt vời! Giao hàng tận 2 tuần mới tới"*, it sees the word "Tuyệt vời!" (Great!) and falsely classifies it as **Positive**.
 * **The Fix:** By utilizing a Fine-Tuned local **Stacking ML Pipeline** specifically trained on domain data, our system understands the negative syntactic structure of sarcasm, boosting Sarcasm Detection from a poor 45% to an impressive 88.5%.
+* **Production Constraint Note:** While our full 917MB Stacking Model achieves the highest accuracy, **GitHub's 100MB file limit** and **Render's 512MB RAM free-tier limit** prevent us from deploying it live. Therefore, the live deployment utilizes a highly optimized **12MB Baseline Model** (Logistic Regression + TF-IDF). This demonstrates system design adaptability: trading off 5% peak accuracy to successfully deploy a working ML feature on zero-cost hardware without crashing the server.
 
 ---
 

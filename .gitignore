@@ -6,6 +6,7 @@ backend/*.pyc
 backend/.env
 backend/.pytest_cache/
 backend/**/*.pkl
+!backend/app/services/sentiment_model_baseline.pkl
 backend/notebooks/data/
 *.csv
 
