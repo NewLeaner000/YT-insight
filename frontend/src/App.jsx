@@ -73,7 +73,7 @@ export default function App() {
   const [activeSessionId, setActiveSessionId] = useLocalStorage('yt-insight-active-session', null);
   const [currentChatHistory, setCurrentChatHistory] = useState([]);
   const [sessionVideos, setSessionVideos] = useState([]);
-  const [selectedVideo, setSelectedVideo] = useState('all');
+  const [selectedVideo, setSelectedVideo] = useState('');
   
   const [message, setMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -135,9 +135,14 @@ export default function App() {
         if (resVideos.ok) {
           const data = await resVideos.json();
           setSessionVideos(data);
-          // If the previously selected video is not in the new session, reset to 'all'
-          if (selectedVideo !== 'all' && !data.find(v => v.video_id === selectedVideo)) {
-            setSelectedVideo('all');
+          
+          if (data.length > 0) {
+            // Auto-select first video if none selected or if currently selected is not in the list
+            if (!selectedVideo || !data.find(v => v.video_id === selectedVideo)) {
+              setSelectedVideo(data[0].video_id);
+            }
+          } else {
+            setSelectedVideo('');
           }
         }
       } catch (e) {
@@ -154,7 +159,7 @@ export default function App() {
       if (!activeSessionId) return;
       try {
         const url = new URL(`${API_URL}/api/sessions/${activeSessionId}/stats`);
-        if (selectedVideo !== 'all') {
+        if (selectedVideo) {
           url.searchParams.append('video_id', selectedVideo);
         }
         
@@ -175,7 +180,11 @@ export default function App() {
   const activeSession = sessions.find(s => s.id === activeSessionId) || null;
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // Add a slight delay to ensure the DOM has updated and height is recalculated before scrolling
+    const timeoutId = setTimeout(() => {
+      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, 100);
+    return () => clearTimeout(timeoutId);
   }, [currentChatHistory, isTyping]);
 
   const handleNewChat = async () => {
@@ -352,7 +361,7 @@ export default function App() {
         session_id: activeSessionId
       };
       
-      if (selectedVideo !== 'all') {
+      if (selectedVideo) {
         payload.video_id = selectedVideo;
       }
       
@@ -572,26 +581,7 @@ export default function App() {
         
         <div className="absolute bottom-0 w-full p-4 sm:p-6 bg-gradient-to-t from-slate-900 via-slate-900 to-transparent pt-12 pointer-events-none">
           <form onSubmit={handleSendMessage} className="max-w-4xl mx-auto relative group pointer-events-auto">
-            {sessionVideos.length > 0 && (
-              <div className="absolute -top-12 left-0 right-0 flex justify-center pointer-events-auto">
-                <select 
-                  value={selectedVideo} 
-                  onChange={(e) => setSelectedVideo(e.target.value)}
-                  className="bg-slate-800 border border-slate-700 text-slate-300 text-xs rounded-full px-4 py-1.5 focus:outline-none focus:border-blue-500 shadow-sm appearance-none cursor-pointer hover:bg-slate-700/50 transition-colors text-center min-w-[200px]"
-                  aria-label="Select Video Context"
-                >
-                  <option value="all">{t.allVideos}</option>
-                  {sessionVideos.map(v => (
-                    <option key={v.video_id} value={v.video_id}>{t.video}: {v.video_id}</option>
-                  ))}
-                </select>
-                <div className="absolute inset-y-0 right-3 flex items-center pointer-events-none text-slate-500">
-                  <svg width="10" height="6" viewBox="0 0 10 6" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M1 1L5 5L9 1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </div>
-              </div>
-            )}
+
             <label htmlFor="chat-input" className="sr-only">Type your message</label>
             <input
               id="chat-input"
