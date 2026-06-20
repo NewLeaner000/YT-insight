@@ -18,7 +18,12 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],  # Specific origins for development and local testing
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "https://yt-insight-lime.vercel.app",  # Vercel production frontend
+        "https://yt-insight.vercel.app",        # Vercel alternate
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
