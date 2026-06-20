@@ -1,4 +1,6 @@
 import google.generativeai as genai
+import google.ai.generativelanguage as glm
+from google.protobuf.struct_pb2 import Struct
 import os
 
 SYSTEM_PROMPT = """You are the YouTube Live Insight Agent. You analyze YouTube comments.
@@ -24,7 +26,6 @@ SECURITY CONSTRAINT:
 - If a user asks to modify data, refuse immediately.
 """
 
-# Model fallback chain
 MODEL_FALLBACK_CHAIN = [
     "gemini-2.0-flash",
     "gemini-1.5-flash",
@@ -35,81 +36,73 @@ _exhausted_models = set()
 
 
 def _convert_tools_to_genai(langchain_tools):
-    """Convert langchain Tool objects to Google GenAI function declarations."""
-    declarations = []
+    """Convert langchain Tool objects to Google GenAI tool config (plain dicts)."""
+    fn_decls = []
     for tool in langchain_tools:
-        declarations.append(genai.protos.FunctionDeclaration(
-            name=tool.name,
-            description=tool.description,
-            parameters=genai.protos.Schema(
-                type=genai.protos.Type.OBJECT,
-                properties={
-                    "input": genai.protos.Schema(
-                        type=genai.protos.Type.STRING,
-                        description="The input query or parameter for this tool"
-                    )
+        fn_decls.append({
+            "name": tool.name,
+            "description": tool.description,
+            "parameters": {
+                "type_": "OBJECT",
+                "properties": {
+                    "input": {
+                        "type_": "STRING",
+                        "description": "The input query or parameter for this tool"
+                    }
                 },
-                required=["input"]
-            )
-        ))
-    return declarations
+                "required": ["input"]
+            }
+        })
+    return fn_decls
 
 
 def _run_agent_loop(model, tool_map, system_message, chat_history_messages):
-    """Execute the ReAct agent loop using Google GenAI SDK directly."""
+    """Execute the ReAct agent loop using Google GenAI SDK."""
 
-    # Build history in GenAI format
+    # Build history
     history = []
     for msg in chat_history_messages:
         if msg["role"] == "user":
-            history.append(genai.protos.Content(
+            history.append(glm.Content(
                 role="user",
-                parts=[genai.protos.Part(text=msg["content"])]
+                parts=[glm.Part(text=msg["content"])]
             ))
         elif msg["role"] == "ai":
-            history.append(genai.protos.Content(
+            history.append(glm.Content(
                 role="model",
-                parts=[genai.protos.Part(text=msg["content"])]
+                parts=[glm.Part(text=msg["content"])]
             ))
 
-    # Separate last user message from history
+    # Separate last user message
     if history:
-        last_user_msg = history.pop()
+        last_content = history.pop()
+        first_text = last_content.parts[0].text
     else:
-        last_user_msg = genai.protos.Content(
-            role="user", parts=[genai.protos.Part(text="Hello")]
-        )
+        first_text = "Hello"
 
     chat = model.start_chat(history=history)
 
-    # Prepend system prompt to the first message since 0.4.x has no system_instruction
-    first_text = last_user_msg.parts[0].text
-    augmented_msg = f"[SYSTEM INSTRUCTIONS]\n{system_message}\n\n[USER QUESTION]\n{first_text}"
-
-    # If there's already chat history, model has seen system prompt before — don't repeat
-    if history:
-        augmented_msg = first_text
+    # Prepend system prompt to first message (0.4.x has no system_instruction)
+    if not history:
+        current_message = f"[SYSTEM INSTRUCTIONS]\n{system_message}\n\n[USER QUESTION]\n{first_text}"
+    else:
+        current_message = first_text
 
     # ReAct loop — max 10 iterations
-    current_message = augmented_msg
     for _ in range(10):
         response = chat.send_message(current_message)
 
         # Check for function calls
         function_calls = []
-        for part in response.candidates[0].content.parts:
-            if hasattr(part, 'function_call') and part.function_call and part.function_call.name:
+        for part in response.parts:
+            if part.function_call and part.function_call.name:
                 function_calls.append(part.function_call)
 
         if not function_calls:
-            # No tool calls — extract text response
-            text_parts = []
-            for part in response.candidates[0].content.parts:
-                if hasattr(part, 'text') and part.text:
-                    text_parts.append(part.text)
-            return " ".join(text_parts) if text_parts else "I could not generate a response."
+            # No tool calls — return text
+            return response.text
 
-        # Execute function calls and send results back
+        # Execute function calls
         fn_response_parts = []
         for fc in function_calls:
             tool_name = fc.name
@@ -117,7 +110,6 @@ def _run_agent_loop(model, tool_map, system_message, chat_history_messages):
 
             if tool_name in tool_map:
                 tool = tool_map[tool_name]
-                # Get the input value — try common key names
                 tool_input = (
                     tool_args.get("input", "") or
                     tool_args.get("query", "") or
@@ -134,15 +126,17 @@ def _run_agent_loop(model, tool_map, system_message, chat_history_messages):
             else:
                 result = f"Unknown tool: {tool_name}"
 
-            fn_response_parts.append(genai.protos.Part(
-                function_response=genai.protos.FunctionResponse(
-                    name=tool_name,
-                    response={"result": result}
-                )
-            ))
+            # Build function response using glm types
+            s = Struct()
+            s.update({"result": result})
+            fn_response_parts.append(
+                glm.Part(function_response=glm.FunctionResponse(
+                    name=tool_name, response=s
+                ))
+            )
 
-        # Send all function results back
-        current_message = genai.protos.Content(parts=fn_response_parts)
+        # Send function results back to model
+        current_message = glm.Content(parts=fn_response_parts)
 
     return "Unable to find a conclusive answer. Please try rephrasing your question."
 
@@ -155,7 +149,7 @@ def _create_agent(model_name: str, video_ids: list = None):
     langchain_tools = get_all_agent_tools(video_ids=video_ids)
 
     tool_map = {tool.name: tool for tool in langchain_tools}
-    fn_declarations = _convert_tools_to_genai(langchain_tools)
+    fn_decls = _convert_tools_to_genai(langchain_tools)
 
     system_message = SYSTEM_PROMPT
     if video_ids:
@@ -164,10 +158,11 @@ def _create_agent(model_name: str, video_ids: list = None):
 
     genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
+    # Use plain dict for tools config — works with ALL SDK versions
     model = genai.GenerativeModel(
         model_name=model_name,
-        tools=[genai.protos.Tool(function_declarations=fn_declarations)],
-        generation_config=genai.GenerationConfig(temperature=0),
+        tools=[{"function_declarations": fn_decls}],
+        generation_config={"temperature": 0},
     )
 
     return model, tool_map, system_message
