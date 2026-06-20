@@ -52,12 +52,14 @@ def _create_agent(model_name: str, video_ids: list[str] = None):
         v_list = "', '".join(video_ids)
         system_message += f"\nCRITICAL INSTRUCTION: You are answering questions EXCLUSIVELY about the YouTube Videos with IDs: '{v_list}'. When using Run_ReadOnly_SQL, you MUST always include `WHERE video_id IN ('{v_list}')` in your query."
     
-    return create_react_agent(llm, tools, state_modifier=SystemMessage(content=system_message))
+    # Pass system_message separately — compatible with ALL langgraph versions
+    agent = create_react_agent(llm, tools)
+    return agent, system_message
 
 
 def get_agent_executor(video_ids: list[str] = None, model_name: str = None):
     """
-    Returns an agent executor. Uses model fallback chain if no specific model is given.
+    Returns (agent, system_message) tuple. Uses model fallback chain if no specific model is given.
     Skips models that are known to be exhausted.
     """
     if not os.getenv("DATABASE_URL") or not os.getenv("GOOGLE_API_KEY"):

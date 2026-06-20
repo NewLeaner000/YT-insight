@@ -3,7 +3,7 @@ import re
 from fastapi import APIRouter, Depends, Request, HTTPException
 from app.schemas.api_models import ChatRequest
 from app.agent.bot import get_agent_executor, mark_model_exhausted, get_available_models, MODEL_FALLBACK_CHAIN
-from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 
 from sqlalchemy.orm import Session
 from app.database.connection import get_db
@@ -54,13 +54,16 @@ def chat_with_agent(request: Request, body: ChatRequest, db: Session = Depends(g
         if model_name not in available:
             continue
         
-        agent_executor = get_agent_executor(video_ids=video_ids, model_name=model_name)
-        if not agent_executor:
+        result = get_agent_executor(video_ids=video_ids, model_name=model_name)
+        if not result:
             continue
+        agent_executor, system_message = result
         
         try:
             print(f"[Chat] Trying model: {model_name}")
-            response = agent_executor.invoke({"messages": chat_history})
+            # Prepend SystemMessage — compatible with ALL langgraph versions
+            messages_with_system = [SystemMessage(content=system_message)] + chat_history
+            response = agent_executor.invoke({"messages": messages_with_system})
             
             final_message = response["messages"][-1].content
             
