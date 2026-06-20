@@ -1,9 +1,10 @@
 fastapi==0.110.0
 uvicorn==0.27.1
-langchain==0.1.13
-langchain-openai==0.1.0
-langchain-google-genai==1.0.1
-langchain-community==0.0.29
+langchain
+langchain-openai
+langchain-google-genai
+langchain-community
+langgraph
 google-api-python-client==2.122.0
 scikit-learn==1.4.1.post1
 pandas==2.2.1
@@ -15,4 +16,3 @@ pydantic==2.6.4
 slowapi==0.1.9
 deep-translator==1.11.4
 gunicorn==21.2.0
-langgraph
