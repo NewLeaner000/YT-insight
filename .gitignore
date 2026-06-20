@@ -1,0 +1,15 @@
+# Backend
+backend/venv/
+backend/env/
+backend/__pycache__/
+backend/*.pyc
+backend/.env
+backend/.pytest_cache/
+backend/**/*.pkl
+backend/notebooks/data/
+*.csv
+
+# General
+.DS_Store
+.idea/
+.vscode/

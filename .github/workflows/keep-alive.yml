@@ -1,0 +1,22 @@
+name: Keep Supabase Alive
+
+on:
+  schedule:
+    # Run at 00:00 every 3rd day
+    - cron: '0 0 */3 * *'
+  workflow_dispatch:
+    # Allow manual triggering
+
+jobs:
+  ping-health-endpoint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Backend Health Check
+        run: |
+          if [ -z "${{ secrets.BACKEND_API_URL }}" ]; then
+            echo "Warning: BACKEND_API_URL secret is not set. Skipping ping."
+            exit 0
+          fi
+          
+          # Hit the health endpoint to wake up Render and ping Supabase
+          curl -f "${{ secrets.BACKEND_API_URL }}/api/health" || echo "Ping failed or returned non-200 status, but request was sent."
