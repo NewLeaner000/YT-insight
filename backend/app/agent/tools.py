@@ -96,7 +96,7 @@ def _make_top_comments_tool(video_ids: list[str] = None):
     return Tool(
         name="Get_Top_Comments",
         func=get_top_comments,
-        description="Returns the top comments for a given sentiment. Input MUST be exactly one of: POSITIVE, NEGATIVE, or NEUTRAL. Use when user asks 'what did positive people say?', 'show me negative comments', 'list neutral comments'."
+        description="Returns the top comments for a given sentiment. Input MUST be exactly one of: 'POSITIVE', 'NEGATIVE', or 'NEUTRAL'. Use when user asks to show or list comments of a specific sentiment, e.g., 'what did positive people say?', 'show me negative comments', 'list neutral comments', 'còn trung lập?', 'tiêu cực thì sao?'."
     )
 
 
@@ -268,7 +268,7 @@ def _make_vector_tool(video_ids: list[str] = None):
     return Tool(
         name="Semantic_Comment_Search",
         func=search_similar_comments,
-        description="Useful when you need to answer qualitative questions about WHAT people are saying, WHY they are angry/happy, or specific topics. Input should be a search query."
+        description="Useful when you need to answer qualitative questions about WHAT people are saying, WHY they are angry/happy, or specific topics. Input should be a search query. CRITICAL: Do NOT use this tool if the user is asking to see comments belonging to a specific sentiment category like positive, negative, or neutral."
     )
 
 
