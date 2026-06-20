@@ -1,6 +1,6 @@
 # YouTube Insight Engine - Gemini 2.5 API Benchmark
 
-🚀 **Live Demo:** [https://yt-insight-lime.vercel.app/](https://yt-insight-lime.vercel.app/)
+**Live Demo:** [https://yt-insight-lime.vercel.app/](https://yt-insight-lime.vercel.app/)
 
 The **YouTube Insight Engine** is powered exclusively by the **Google Gemini 2.5 Flash API**, utilizing a custom **Retrieval-Augmented Generation (RAG)** architecture via LangGraph and PostgreSQL (PGVector). 
 
