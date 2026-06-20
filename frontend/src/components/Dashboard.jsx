@@ -99,9 +99,9 @@ function DashboardInner({ sentimentCounts, lang = 'vi' }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 h-72">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 h-auto lg:h-72">
         {/* Bar Chart */}
-        <div className="bg-slate-900/50 rounded-xl p-4 border border-slate-700/50 flex flex-col h-full hover:border-white/30 transition-colors">
+        <div className="bg-slate-900/50 rounded-xl p-4 border border-slate-700/50 flex flex-col h-72 lg:h-full hover:border-white/30 transition-colors">
           <h4 className="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
             <MessageCircle size={16} /> {t.volumeDist}
           </h4>
@@ -125,7 +125,7 @@ function DashboardInner({ sentimentCounts, lang = 'vi' }) {
         </div>
 
         {/* Pie Chart */}
-        <div className="bg-slate-900/50 rounded-xl p-4 border border-slate-700/50 flex flex-col h-full hover:border-white/30 transition-colors">
+        <div className="bg-slate-900/50 rounded-xl p-4 border border-slate-700/50 flex flex-col h-72 lg:h-full hover:border-white/30 transition-colors">
           <h4 className="text-sm font-semibold text-slate-300 mb-2">{t.sentimentRatio}</h4>
           <div className="flex-1" style={{ minWidth: 0, minHeight: 200 }}>
             <ResponsiveContainer width="99%" height="100%">

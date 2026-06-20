@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { LogOut, Globe } from 'lucide-react';
+import { LogOut, Globe, Menu, X } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import Login from './components/Login';
 import { dict } from './i18n';
@@ -59,6 +59,7 @@ export default function App() {
   
   const [isIngesting, setIsIngesting] = useState(false);
   const [ingestStatus, setIngestStatus] = useState(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
   // Session Management via Backend
   const [sessions, setSessions] = useState([]);
@@ -181,6 +182,7 @@ export default function App() {
         const data = await res.json();
         await fetchSessions();
         setActiveSessionId(data.id);
+        setIsSidebarOpen(false);
       }
     } catch (e) {
       console.error("Failed to create session", e);
@@ -243,6 +245,7 @@ export default function App() {
           const data = await res.json();
           targetSessionId = data.id;
           setActiveSessionId(targetSessionId);
+          setIsSidebarOpen(false);
           // Also fetch sessions so the sidebar updates
           await fetchSessions();
         } else {
@@ -371,10 +374,20 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-900 text-slate-100 font-sans">
+    <div className="flex h-screen overflow-hidden bg-slate-900 text-slate-100 font-sans relative">
       
+      {/* Backdrop for mobile */}
+      {isSidebarOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm z-20 md:hidden transition-opacity duration-300"
+          onClick={() => setIsSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className="w-80 bg-slate-800 border-r border-slate-700 flex flex-col shadow-xl z-10 shrink-0">
+      <aside className={`fixed inset-y-0 left-0 z-30 w-80 bg-slate-800 border-r border-slate-700 flex flex-col shadow-xl transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${
+        isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+      } shrink-0`}>
         <div className="p-5 border-b border-slate-700 bg-slate-800 flex justify-between items-start">
           <div>
             <h1 className="text-xl font-bold bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent">
@@ -382,14 +395,23 @@ export default function App() {
             </h1>
             <p className="text-sm text-slate-400 mt-1">{t.subtitle}</p>
           </div>
-          <button 
-            onClick={() => setLang(lang === 'vi' ? 'en' : 'vi')}
-            className="p-1.5 bg-slate-700/50 hover:bg-slate-600 rounded-md text-slate-300 transition-colors flex items-center gap-1 text-xs font-medium"
-            title="Toggle Language"
-          >
-            <Globe size={14} />
-            {lang.toUpperCase()}
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button 
+              onClick={() => setLang(lang === 'vi' ? 'en' : 'vi')}
+              className="p-1.5 bg-slate-700/50 hover:bg-slate-600 rounded-md text-slate-300 transition-colors flex items-center gap-1 text-xs font-medium"
+              title="Toggle Language"
+            >
+              <Globe size={14} />
+              {lang.toUpperCase()}
+            </button>
+            <button
+              onClick={() => setIsSidebarOpen(false)}
+              className="md:hidden p-1.5 bg-slate-700/50 hover:bg-slate-600 rounded-md text-slate-300 transition-colors"
+              aria-label="Close sidebar"
+            >
+              <X size={14} />
+            </button>
+          </div>
         </div>
         
         {/* Chat History Section */}
@@ -411,7 +433,10 @@ export default function App() {
             {sessions.map((session) => (
               <li key={session.id}>
                 <button
-                  onClick={() => setActiveSessionId(session.id)}
+                  onClick={() => {
+                    setActiveSessionId(session.id);
+                    setIsSidebarOpen(false);
+                  }}
                   className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-all group flex justify-between items-center ${
                     activeSessionId === session.id 
                       ? 'bg-blue-600/20 text-blue-300 border border-blue-500/30' 
@@ -462,7 +487,10 @@ export default function App() {
 
           <div className="mt-4 pt-4 border-t border-slate-700">
             <button
-              onClick={() => setIsAuthenticated(false)}
+              onClick={() => {
+                setIsAuthenticated(false);
+                setIsSidebarOpen(false);
+              }}
               className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-sm font-medium text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
             >
               <LogOut size={16} />
@@ -474,16 +502,23 @@ export default function App() {
       
       {/* Main Content: Chat Interface */}
       <main className="flex-1 flex flex-col bg-slate-900 relative">
-        <header className="h-16 border-b border-slate-800 flex items-center px-6 bg-slate-900/80 backdrop-blur-md absolute top-0 w-full z-10 shadow-sm">
-          <div className="flex items-center gap-3">
-            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)] animate-pulse" aria-hidden="true"></div>
-            <h2 className="font-medium text-slate-200">
+        <header className="h-16 border-b border-slate-800 flex items-center px-4 md:px-6 bg-slate-900/80 backdrop-blur-md absolute top-0 w-full z-10 shadow-sm">
+          <div className="flex items-center gap-3 w-full">
+            <button
+              onClick={() => setIsSidebarOpen(true)}
+              className="md:hidden p-2 -ml-2 bg-slate-800/40 hover:bg-slate-800 border border-slate-700/50 rounded-lg text-slate-300 transition-colors mr-1"
+              aria-label="Open sidebar"
+            >
+              <Menu size={18} />
+            </button>
+            <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)] animate-pulse shrink-0" aria-hidden="true"></div>
+            <h2 className="font-medium text-slate-200 truncate">
               {activeSession ? activeSession.title : t.agentName}
             </h2>
           </div>
         </header>
         
-        <div className="flex-1 overflow-y-auto p-6 pt-24 pb-32 space-y-6 scroll-smooth" role="log" aria-live="polite">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 pt-20 sm:pt-24 pb-32 space-y-6 scroll-smooth" role="log" aria-live="polite">
           {activeSession?.status === 'processing' && (
             <div className="flex flex-col items-center justify-center p-12 text-slate-400">
                <div className="w-10 h-10 border-4 border-slate-700 border-t-blue-500 rounded-full animate-spin mb-4"></div>
@@ -528,7 +563,7 @@ export default function App() {
           <div ref={chatEndRef} />
         </div>
         
-        <div className="absolute bottom-0 w-full p-6 bg-gradient-to-t from-slate-900 via-slate-900 to-transparent pt-12 pointer-events-none">
+        <div className="absolute bottom-0 w-full p-4 sm:p-6 bg-gradient-to-t from-slate-900 via-slate-900 to-transparent pt-12 pointer-events-none">
           <form onSubmit={handleSendMessage} className="max-w-4xl mx-auto relative group pointer-events-auto">
             {sessionVideos.length > 0 && (
               <div className="absolute -top-12 left-0 right-0 flex justify-center pointer-events-auto">
@@ -558,13 +593,13 @@ export default function App() {
               onChange={(e) => setMessage(e.target.value)}
               placeholder={activeSessionId && sessionVideos.length > 0 ? t.placeholderAsk : t.placeholderPaste}
               disabled={isTyping}
-              className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-5 pr-24 py-4 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all text-[15px] shadow-lg disabled:opacity-50 placeholder:text-slate-500"
+              className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-4 sm:pl-5 pr-20 sm:pr-24 py-4 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500 transition-all text-sm sm:text-[15px] shadow-lg disabled:opacity-50 placeholder:text-slate-500"
             />
             <button
               type="submit"
               disabled={!message.trim() || isTyping}
               aria-label="Send message"
-              className="absolute right-2 top-2 bottom-2 px-5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-medium rounded-lg transition-all active:scale-95 flex items-center justify-center"
+              className="absolute right-2 top-2 bottom-2 px-4 sm:px-5 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-700 disabled:text-slate-500 text-white font-medium rounded-lg transition-all active:scale-95 flex items-center justify-center text-sm"
             >
               {t.send}
             </button>
