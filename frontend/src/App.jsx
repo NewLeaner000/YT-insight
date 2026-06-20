@@ -45,7 +45,7 @@ export default function App() {
     content: t.placeholderPaste 
   };
   const [isAuthenticated, setIsAuthenticated] = useLocalStorage('yt-insight-auth', false);
-  const [userId] = useLocalStorage('yt-insight-user-id', 'user-' + Date.now()); // Simple anonymous auth for now
+  const [userId, setUserId] = useLocalStorage('yt-insight-user-id', 'demouser');
   
   // Use environment variable for API URL or fallback to localhost for local dev
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -55,6 +55,13 @@ export default function App() {
   useEffect(() => {
     fetch(`${API_URL}/api/health`).catch(() => {});
   }, [API_URL]);
+
+  // Migrate legacy anonymous user IDs to unified 'demouser' account
+  useEffect(() => {
+    if (isAuthenticated && userId && userId.startsWith('user-')) {
+      setUserId('demouser');
+    }
+  }, [isAuthenticated, userId, setUserId]);
 
   
   const [isIngesting, setIsIngesting] = useState(false);
@@ -95,11 +102,11 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && userId) {
       fetchSessions();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated]);
+  }, [isAuthenticated, userId]);
 
   // Fetch messages and videos when active session changes
   useEffect(() => {

@@ -26,6 +26,14 @@ def create_session(body: CreateSessionRequest, db: Session = Depends(get_db)):
 
 @router.get("/sessions")
 def get_sessions(user_id: str, db: Session = Depends(get_db)):
+    if user_id == "demouser":
+        # Automatically migrate legacy anonymous sessions ('user-*') to 'demouser'
+        db.query(DbSession).filter(DbSession.user_id.like("user-%")).update(
+            {DbSession.user_id: "demouser"}, 
+            synchronize_session=False
+        )
+        db.commit()
+
     sessions = db.query(DbSession).filter(DbSession.user_id == user_id).order_by(DbSession.created_at.desc()).all()
     return [{"id": s.id, "title": s.title, "created_at": s.created_at} for s in sessions]
 
