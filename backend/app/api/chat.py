@@ -2,8 +2,7 @@ import time
 import re
 from fastapi import APIRouter, Depends, Request, HTTPException
 from app.schemas.api_models import ChatRequest
-from app.agent.bot import get_agent_executor, mark_model_exhausted, get_available_models, MODEL_FALLBACK_CHAIN
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
+from app.agent.bot import get_agent_executor, mark_model_exhausted, get_available_models, MODEL_FALLBACK_CHAIN, _run_agent_loop
 
 from sqlalchemy.orm import Session
 from app.database.connection import get_db
@@ -35,18 +34,14 @@ def chat_with_agent(request: Request, body: ChatRequest, db: Session = Depends(g
     db.add(user_msg)
     db.commit()
     
-    # Format chat history for LangGraph
+    # Build chat history in simple dict format
     chat_history = []
-    
-    # Always fetch history from DB to ensure consistency
     db_history = db.query(Message).filter(Message.session_id == session_id).order_by(Message.created_at.asc()).all()
     for msg in db_history:
         if msg.role == "user":
-            chat_history.append(HumanMessage(content=msg.content))
+            chat_history.append({"role": "user", "content": msg.content})
         elif msg.role == "ai":
-            chat_history.append(AIMessage(content=msg.content))
-    
-    # Note: user_msg is already in db_history because we committed it above
+            chat_history.append({"role": "ai", "content": msg.content})
     
     # Try each model in the fallback chain
     for model_name in MODEL_FALLBACK_CHAIN:
@@ -57,26 +52,14 @@ def chat_with_agent(request: Request, body: ChatRequest, db: Session = Depends(g
         result = get_agent_executor(video_ids=video_ids, model_name=model_name)
         if not result:
             continue
-        agent_executor, system_message = result
+        model, tool_map, system_message = result
         
         try:
             print(f"[Chat] Trying model: {model_name}")
-            # Prepend SystemMessage — compatible with ALL langgraph versions
-            messages_with_system = [SystemMessage(content=system_message)] + chat_history
-            response = agent_executor.invoke({"messages": messages_with_system})
-            
-            final_message = response["messages"][-1].content
+            final_message = _run_agent_loop(model, tool_map, system_message, chat_history)
             
             # Ensure it's a string
-            if isinstance(final_message, list):
-                text_blocks = []
-                for block in final_message:
-                    if isinstance(block, dict) and "text" in block:
-                        text_blocks.append(block["text"])
-                    elif isinstance(block, str):
-                        text_blocks.append(block)
-                final_message = " ".join(text_blocks)
-            elif not isinstance(final_message, str):
+            if not isinstance(final_message, str):
                 final_message = str(final_message)
                 
             # Save AI response to DB
@@ -88,7 +71,7 @@ def chat_with_agent(request: Request, body: ChatRequest, db: Session = Depends(g
                 "reply": final_message,
                 "metadata": {
                     "model": model_name,
-                    "toolUsed": "LangGraph ReAct Agent (Hybrid)"
+                    "toolUsed": "Google GenAI ReAct Agent (Hybrid)"
                 }
             }
         except Exception as e:

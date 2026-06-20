@@ -1,8 +1,6 @@
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langgraph.prebuilt import create_react_agent
-from langchain_core.messages import SystemMessage
-from app.agent.tools import get_all_agent_tools
+import google.generativeai as genai
 import os
+import json
 
 SYSTEM_PROMPT = """You are the YouTube Live Insight Agent. You analyze YouTube comments.
 You have access to FIVE tools. Choose the most efficient one:
@@ -40,34 +38,149 @@ _agent_cache = {}
 _exhausted_models = set()
 
 
-def _create_agent(model_name: str, video_ids: list[str] = None):
-    """Create a ReAct agent with a specific Gemini model."""
+def _convert_tools_to_genai(langchain_tools):
+    """Convert langchain Tool objects to Google GenAI function declarations."""
+    function_declarations = []
+    for tool in langchain_tools:
+        func_decl = {
+            "name": tool.name,
+            "description": tool.description,
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "input": {
+                        "type": "string",
+                        "description": "The input query or parameter for this tool"
+                    }
+                },
+                "required": ["input"]
+            }
+        }
+        function_declarations.append(func_decl)
+    return function_declarations
+
+
+def _run_agent_loop(model, tool_map, system_message, chat_history_messages):
+    """Execute the ReAct agent loop: LLM → tool call → LLM → ... → final answer."""
+    
+    # Build conversation history for Google GenAI format
+    history = []
+    for msg in chat_history_messages:
+        if msg["role"] == "user":
+            history.append({"role": "user", "parts": [msg["content"]]})
+        elif msg["role"] == "ai":
+            history.append({"role": "model", "parts": [msg["content"]]})
+    
+    chat = model.start_chat(history=history[:-1] if history else [])
+    
+    # Send the last user message (or empty if no history)
+    last_message = history[-1]["parts"][0] if history else "Hello"
+    
+    # ReAct loop — max 10 iterations to prevent infinite loops
+    for _ in range(10):
+        response = chat.send_message(last_message)
+        
+        # Check if the model wants to call a function
+        function_calls = []
+        for part in response.candidates[0].content.parts:
+            if hasattr(part, 'function_call') and part.function_call.name:
+                function_calls.append(part.function_call)
+        
+        if not function_calls:
+            # No function calls — return the text response
+            return response.text
+        
+        # Execute each function call
+        function_responses = []
+        for fc in function_calls:
+            tool_name = fc.name
+            tool_args = dict(fc.args) if fc.args else {}
+            
+            if tool_name in tool_map:
+                tool = tool_map[tool_name]
+                # Extract the input argument
+                tool_input = tool_args.get("input", tool_args.get("query", tool_args.get("sentiment", tool_args.get("sql_query", ""))))
+                
+                # If no standard key found, try the first available value
+                if not tool_input and tool_args:
+                    tool_input = str(list(tool_args.values())[0])
+                
+                try:
+                    result = tool.func(tool_input)
+                except Exception as e:
+                    result = f"Tool error: {str(e)}"
+            else:
+                result = f"Unknown tool: {tool_name}"
+            
+            function_responses.append(
+                genai.protos.Part(function_response=genai.protos.FunctionResponse(
+                    name=tool_name,
+                    response={"result": result}
+                ))
+            )
+        
+        # Send function results back to the model
+        last_message = function_responses
+    
+    return "I was unable to find a conclusive answer after multiple attempts. Please try rephrasing your question."
+
+
+def _create_agent(model_name: str, video_ids: list = None):
+    """Create agent using Google GenAI SDK directly — no langgraph needed."""
     print(f"[Agent] Creating agent with model: {model_name}")
-    llm = ChatGoogleGenerativeAI(model=model_name, temperature=0)
     
-    tools = get_all_agent_tools(video_ids=video_ids)
+    from app.agent.tools import get_all_agent_tools
+    langchain_tools = get_all_agent_tools(video_ids=video_ids)
     
+    # Build tool map for execution
+    tool_map = {tool.name: tool for tool in langchain_tools}
+    
+    # Convert to GenAI function declarations
+    function_declarations = _convert_tools_to_genai(langchain_tools)
+    
+    # Build system message
     system_message = SYSTEM_PROMPT
     if video_ids:
         v_list = "', '".join(video_ids)
         system_message += f"\nCRITICAL INSTRUCTION: You are answering questions EXCLUSIVELY about the YouTube Videos with IDs: '{v_list}'. When using Run_ReadOnly_SQL, you MUST always include `WHERE video_id IN ('{v_list}')` in your query."
     
-    # Pass system_message separately — compatible with ALL langgraph versions
-    agent = create_react_agent(llm, tools)
-    return agent, system_message
+    # Configure API key
+    genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+    
+    # Create model with tools
+    model = genai.GenerativeModel(
+        model_name=model_name,
+        system_instruction=system_message,
+        tools=[genai.protos.Tool(function_declarations=[
+            genai.protos.FunctionDeclaration(
+                name=fd["name"],
+                description=fd["description"],
+                parameters=genai.protos.Schema(
+                    type=genai.protos.Type.OBJECT,
+                    properties={
+                        k: genai.protos.Schema(type=genai.protos.Type.STRING, description=v.get("description", ""))
+                        for k, v in fd["parameters"].get("properties", {}).items()
+                    },
+                    required=fd["parameters"].get("required", [])
+                )
+            )
+            for fd in function_declarations
+        ])]
+    )
+    
+    return model, tool_map, system_message
 
 
-def get_agent_executor(video_ids: list[str] = None, model_name: str = None):
+def get_agent_executor(video_ids: list = None, model_name: str = None):
     """
-    Returns (agent, system_message) tuple. Uses model fallback chain if no specific model is given.
-    Skips models that are known to be exhausted.
+    Returns (model, tool_map, system_message) tuple.
+    Uses model fallback chain if no specific model is given.
     """
     if not os.getenv("DATABASE_URL") or not os.getenv("GOOGLE_API_KEY"):
         return None
     
     vid_key = ",".join(sorted(video_ids)) if video_ids else "__global__"
     
-    # If a specific model is requested
     if model_name:
         cache_key = f"{model_name}:{vid_key}"
         if cache_key not in _agent_cache:
@@ -82,7 +195,6 @@ def get_agent_executor(video_ids: list[str] = None, model_name: str = None):
                 _agent_cache[cache_key] = _create_agent(model, video_ids)
             return _agent_cache[cache_key]
     
-    # All models exhausted
     return None
 
 
